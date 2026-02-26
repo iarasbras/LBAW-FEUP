@@ -1,0 +1,62 @@
+/* Folha de estilos para impressão */
+/* Esta folha é carregada apenas ao imprimir (media=print) */
+
+/* Remover fundos escuros e sombras para poupar tinta e melhorar legibilidade */
+* {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html, body {
+  color: #000 !important;
+  background: #fff !important;
+  font: 12pt/1.4 "Segoe UI", Arial, sans-serif !important;
+}
+
+/* Esconder elementos de navegação, botões e elementos que não interessam no papel */
+header, nav, footer,
+.header-actions,
+.admin-header,
+.btn,
+.notification-bell,
+.pagination-wrapper,
+.dashboard-filters,
+form[action*="logout"] {
+  display: none !important;
+}
+
+/* Tabelas mais legíveis ao imprimir */
+.admin-table,
+.inventory-table,
+.admin-table th,
+.admin-table td,
+.inventory-table th,
+.inventory-table td {
+  border: 1px solid #000 !important;
+  border-collapse: collapse !important;
+  color: #000 !important;
+}
+.admin-table th,
+.inventory-table th {
+  background: #f5f5f5 !important;
+}
+.admin-table td,
+.inventory-table td {
+  background: #fff !important;
+  padding: 8pt 10pt !important;
+}
+
+/* Links mostram o URL entre parêntesis para contexto em papel */
+a[href]::after {
+  content: " (" attr(href) ")";
+  font-size: 80%;
+}
+
+/* Utilitários para controlar impressão no markup, se necessário */
+.print-hidden { display: none !important; }
+.print-only { display: block !important; }
+
+/* Quebra de página controlada em blocos principais */
+.admin-shell, .container, main, section, article {
+  page-break-inside: avoid;
+}

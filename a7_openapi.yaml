@@ -1,0 +1,801 @@
+openapi: 3.0.0
+info:
+  title: Liberato API
+  description: |
+    OpenAPI specification for the Liberato online bookstore.
+    This documents the public catalog, shopping cart, user profile, and admin endpoints.
+  version: 1.0.0
+servers:
+  - url: http://127.0.0.1:8001/
+    description: Local Development Server
+
+paths:
+  # =========================================================================
+  # 1. PUBLIC ROUTES (Catalog & Home)
+  # =========================================================================
+
+  /catalog:
+    get:
+      tags:
+        - Catalog
+      summary: Retrieve a paginated list of all books in the catalog. (CatalogController@index)
+      operationId: catalogIndex
+      parameters:
+        - name: q
+          in: query
+          description: Search term for books (matches against title and author).
+          schema:
+            type: string
+        - name: category
+          in: query
+          description: Filter books by a specific category name.
+          schema:
+            type: string
+        - name: page
+          in: query
+          description: The page number for pagination.
+          schema:
+            type: integer
+            default: 1
+      responses:
+        '200':
+          description: A paginated list of books.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Book'
+                  links:
+                    type: object # Pagination links (first, last, prev, next)
+                  meta:
+                    type: object # Pagination metadata (current_page, per_page, total)
+
+  /catalog/{bookId}:
+    get:
+      tags:
+        - Catalog
+      summary: Retrieve detailed information for a specific book. (CatalogController@show)
+      operationId: catalogShow
+      parameters:
+        - name: bookId
+          in: path
+          required: true
+          description: The ID of the book to retrieve.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Detailed information for the requested book.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+        '404':
+          description: Book not found
+
+  # =========================================================================
+  # 2. SHOPPING CART (CartController)
+  # =========================================================================
+
+  /cart:
+    get:
+      tags:
+        - Cart
+      summary: Retrieve the current state of the user's shopping cart. (CartController@index)
+      operationId: cartIndex
+      responses:
+        '200':
+          description: The user's current shopping cart contents.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cart:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  books:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Book'
+
+  /cart/add:
+    post:
+      tags:
+        - Cart
+      summary: Add a specific quantity of a book to the shopping cart. (CartController@add)
+      operationId: cartAdd
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - book_id
+              properties:
+                book_id:
+                  type: integer
+                  description: ID of the book to add.
+                quantity:
+                  type: integer
+                  description: Number of items to add.
+                  default: 1
+      responses:
+        '200':
+          description: Item successfully added to cart
+        '404':
+          description: Book not found
+        '422':
+          description: Validation error (e.g., invalid book_id or quantity).
+
+  /cart/checkout:
+    get:
+      tags:
+        - Cart
+      summary: Display the checkout page form, requiring session/user data. (CartController@checkout)
+      operationId: cartCheckout
+      deprecated: true
+      description: This route returns an HTML view and is not part of the REST API.
+      responses:
+        '200':
+          description: HTML checkout page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /cart/complete:
+    post:
+      tags:
+        - Cart
+      summary: Finalize the order creation after checkout. (CartController@complete)
+      operationId: cartComplete
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - payment_method
+              properties:
+                payment_method:
+                  type: string
+                  enum: [MBWay, Card, Paypal]
+                mbway_phone:
+                  type: string
+                  description: Required if payment_method is MBWay.
+                card_number:
+                  type: string
+                  description: Required if payment_method is Card.
+                card_cvc:
+                  type: string
+                  description: Required if payment_method is Card.
+                paypal_email:
+                  type: string
+                  format: email
+                  description: Required if payment_method is Paypal.
+      responses:
+        '201':
+          description: Order successfully created
+        '400':
+          description: Validation errors (missing fields)
+        '401':
+          description: Requires authentication
+
+  /cart/update:
+    post:
+      tags:
+        - Cart
+      summary: Update the quantity of a specific item in the cart. (CartController@update)
+      operationId: cartUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - book_id
+                - quantity
+              properties:
+                book_id:
+                  type: integer
+                quantity:
+                  type: integer
+      responses:
+        '200':
+          description: Cart item quantity updated
+        '404':
+          description: Item not found in cart
+
+  /cart/remove:
+    post:
+      tags:
+        - Cart
+      summary: Remove an item entirely from the shopping cart. (CartController@remove)
+      operationId: cartRemove
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - book_id
+              properties:
+                book_id:
+                  type: integer
+      responses:
+        '200':
+          description: Item successfully removed
+
+  /order/{orderId}:
+    get:
+      tags:
+        - Order
+      summary: View the confirmation/details page for a specific, completed order. (CartController@confirmation)
+      operationId: orderShowConfirmation
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          description: The ID of the confirmed order.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Order details retrieved
+        '404':
+          description: Order not found
+        '403':
+          description: User does not own this order
+
+  # =========================================================================
+  # 3. USER PROFILE (ProfileController)
+  # =========================================================================
+
+  /profile:
+    get:
+      tags:
+        - Profile (Authenticated)
+      summary: Retrieve the authenticated user's profile details. (ProfileController@show)
+      operationId: profileShow
+      security:
+        - bearerAuth: [] # Requires Bearer token or cookie-based authentication
+      responses:
+        '200':
+          description: User profile successfully retrieved
+        '401':
+          description: Unauthorized
+
+    post:
+      tags:
+        - Profile (Authenticated)
+      summary: Update the authenticated user's profile information. (ProfileController@update)
+      operationId: profileUpdate
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                password_confirmation:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Profile updated successfully
+        '401':
+          description: Unauthorized
+        '422':
+          description: Validation errors
+
+  /profile/orders:
+    get:
+      tags:
+        - Order (Authenticated)
+      summary: Retrieve a history of all orders for the authenticated user. (OrderController@history)
+      operationId: profileOrderHistory
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+          description: Order history retrieved
+
+  # =========================================================================
+  # 4. AUTHENTICATION (Login, Logout, Register)
+  # =========================================================================
+
+  /login:
+    get:
+      tags:
+        - Authentication
+      summary: Display the login form. (LoginController@showLoginForm)
+      operationId: showLoginForm
+      responses:
+        '200':
+          description: Returns the HTML for the login page
+
+    post:
+      tags:
+        - Authentication
+      summary: Authenticate the user with credentials. (LoginController@authenticate)
+      operationId: authenticate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Authentication successful, user session/token established
+        '401':
+          description: Invalid credentials
+
+  /logout:
+    get:
+      tags:
+        - Authentication
+      summary: Log the authenticated user out. (LogoutController@logout)
+      operationId: logout
+      responses:
+        '200':
+          description: User logged out, session terminated
+
+  /register:
+    get:
+      tags:
+        - Authentication
+      summary: Display the registration form. (RegisterController@showRegistrationForm)
+      operationId: showRegistrationForm
+      responses:
+        '200':
+          description: Returns the HTML for the registration page
+
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user account. (RegisterController@register)
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+                - password_confirmation
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '201':
+          description: User successfully registered and logged in
+        '422':
+          description: Validation errors (e.g., email already exists, weak password)
+
+  # =========================================================================
+  # 5. ADMIN ROUTES (AdminUser, AdminBook, Dashboard)
+  # =========================================================================
+  /admin:
+    get:
+      tags:
+        - Admin
+      summary: Admin Dashboard (DashboardController@index)
+      operationId: adminDashboard
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Admin dashboard view/data retrieved
+        '403':
+          description: Forbidden (Requires Admin role)
+
+  /admin/users:
+    get:
+      tags:
+        - Admin - Users
+      summary: Retrieve a paginated list of all users. (AdminUserController@index)
+      operationId: adminUserIndex
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of users retrieved
+        '403':
+          description: Forbidden
+
+    post:
+      tags:
+        - Admin - Users
+      summary: Create a new user account by an administrator. (AdminUserController@store)
+      operationId: adminUserStore
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '201':
+          description: User created successfully
+        '422':
+          description: Validation errors
+
+  /admin/users/create:
+    get:
+      tags:
+        - Admin - Users
+      summary: Display the form to create a new user. (AdminUserController@create)
+      operationId: adminUserCreateForm
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Returns the HTML for the user creation page
+
+  /admin/users/{userId}:
+    get:
+      tags:
+        - Admin - Users
+      summary: View details of a specific user. (AdminUserController@show)
+      operationId: adminUserShow
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: The ID of the user being managed.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User details retrieved
+        '404':
+          description: User not found
+
+    put:
+      tags:
+        - Admin - Users
+      summary: Update a user's profile details. (AdminUserController@update)
+      operationId: adminUserUpdate
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: The ID of the user being managed.
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: User updated successfully
+        '422':
+          description: Validation errors
+
+  /admin/users/{userId}/edit:
+    get:
+      tags:
+        - Admin - Users
+      summary: Display the form to edit a specific user. (AdminUserController@edit)
+      operationId: adminUserEditForm
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: The ID of the user to edit.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Returns the HTML for the user edit page
+
+  /admin/users/{userId}/toggle-block:
+    patch:
+      tags:
+        - Admin - Users
+      summary: Toggle the block status of a user. (AdminUserController@toggleBlock)
+      operationId: adminUserToggleBlock
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          description: The ID of the user to block/unblock.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User block status toggled successfully
+        '404':
+          description: User not found
+
+  /admin/books/create:
+    get:
+      tags:
+        - Admin - Books
+      summary: Display the form to create a new book entry. (AdminBookController@create)
+      operationId: adminBookCreateForm
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Returns the HTML for the book creation page
+
+  /admin/books:
+    post:
+      tags:
+        - Admin - Books
+      summary: Store a new book entry in the catalog. (AdminBookController@store)
+      operationId: adminBookStore
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - author
+                - price
+                - available_stock
+              properties:
+                name:
+                  type: string
+                author:
+                  type: string
+                price:
+                  type: number
+                  format: float
+                language:
+                  type: string
+                synopsis:
+                  type: string
+                category_name:
+                  type: string
+                available_stock:
+                  type: integer
+      responses:
+        '201':
+          description: Book created successfully
+        '422':
+          description: Validation errors
+
+  # =========================================================================
+  # 6. COMPONENTS (Reusable Schemas)
+  # =========================================================================
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session_id # Example cookie name for session-based auth
+
+  schemas:
+    Book:
+      type: object
+      properties: # Based on CatalogController and BookController
+        book_id:
+          type: integer
+          description: The unique identifier for the book.
+        name:
+          type: string
+        author:
+          type: string
+        price:
+          type: number
+          format: float
+        language:
+          type: string
+        synopsis:
+          type: string
+        category_name:
+          type: string
+        seller_id:
+          type: integer
+        available_stock:
+          type: integer
+
+    User:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          description: The unique identifier for the user.
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        profile_img_url:
+          type: string
+          nullable: true
+        is_blocked:
+          type: boolean
+
+    Order:
+      type: object
+      properties:
+        order_id:
+          type: integer
+          description: The unique identifier for the order.
+        user_id:
+          type: integer
+        payment_id:
+          type: integer
+        total_price:
+          type: number
+          format: float
+        date:
+          type: string
+          format: date-time
+        status:
+          type: string
+        tracking_number:
+          type: string
+          nullable: true
+        books:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+
+    OrderItem:
+      type: object
+      properties:
+        order_id:
+          type: integer
+        book_id:
+          type: integer
+        quantity:
+          type: integer
+        unit_price_at_purchase:
+          type: number
+          format: float
+
+    Payment:
+      type: object
+      properties:
+        payment_id:
+          type: integer
+          description: The unique identifier for the payment.
+        amount:
+          type: number
+          format: float
+        status:
+          type: string
+        transaction_id:
+          type: string
+
+    Category:
+      type: object
+      properties:
+        category_name:
+          type: string
+          description: The unique name of the category.
+
+    Review:
+      type: object
+      properties:
+        review_id:
+          type: integer
+          description: The unique identifier for the review.
+        user_id:
+          type: integer
+        book_id:
+          type: integer
+        rating:
+          type: integer
+        date:
+          type: string
+          format: date-time
+
+    Admin:
+      type: object
+      properties:
+        admin_id:
+          type: integer
+          description: The unique identifier for the admin.
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    ShoppingCart:
+      type: object
+      properties:
+        cart_id:
+          type: integer
+          description: The unique identifier for the cart item.
+        user_id:
+          type: integer
+        book_id:
+          type: integer
+        quantity:
+          type: integer
