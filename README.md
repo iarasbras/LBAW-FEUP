@@ -4,6 +4,7 @@
 ## Product
 
 > Designed to redefine the reading experience, Liberato combines technology, accessibility, and community to create a modern space for book lovers. The platform enables readers to easily discover, purchase, and review books. By giving customers a seamless shopping experience, Liberato empowers readers, authors, and publishers to connect through a shared passion for literature.
+
 > The Lierato final product represents the implementation of the information system conceptualised in the earlier stages (A1 to A7), using PHP and
 The Laravel Framework to create dynamic web pages, AJAX for enhanced user experience, and PostgreSQL as the database solution. Designed to redefine the reading experience, Liberato combines technology, accessibility, and community to create a modern space for book lovers. The platform enables readers to easily discover, purchase, and review books.        
 
